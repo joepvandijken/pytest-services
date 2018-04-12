@@ -40,11 +40,11 @@ def reload_settings(settings, databases=None):
     if databases:
         settings.DATABASES.update(databases)
 
+    import django
     # check if there's settings to reload
     if hasattr(settings, 'ROOT_URLCONF'):
         if settings.ROOT_URLCONF in sys.modules:
             imp.reload(sys.modules[settings.ROOT_URLCONF])
-        import django
         if hasattr(django, 'setup'):
             django.setup()
         import_module(settings.ROOT_URLCONF)
@@ -58,19 +58,29 @@ def reload_settings(settings, databases=None):
         import django.db.transaction
         import django.db.models
         import django.db.models.sql.query
-        import django.core.management.commands.syncdb
         import django.db.models.sql.compiler
         import django.db.backends
         import django.db.backends.mysql.base
         import django.core.management.commands.loaddata
 
-        # all modules which imported django.db.connections should be changed to get new ConnectionHanlder
-        django.db.models.sql.compiler.connections = django.db.models.connections = \
-            django.core.management.commands.loaddata.connections = \
-            django.db.backends.connections = django.db.backends.mysql.base.connections = \
-            django.core.management.commands.syncdb.connections = django.db.transaction.connections = \
-            django.db.connections = django.db.models.base.connections = django.db.models.sql.query.connections = \
-            ConnectionHandler(settings.DATABASES)
+        if django.VERSION < (1, 9):
+            import django.core.management.commands.syncdb
+            # all modules which imported django.db.connections should be changed to get new ConnectionHandler
+            django.db.models.sql.compiler.connections = django.db.models.connections = \
+                django.core.management.commands.loaddata.connections = \
+                django.db.backends.connections = django.db.backends.mysql.base.connections = \
+                django.core.management.commands.syncdb.connections = django.db.transaction.connections = \
+                django.db.connections = django.db.models.base.connections = django.db.models.sql.query.connections = \
+                ConnectionHandler(settings.DATABASES)
+        else:
+            import django.core.management.commands.migrate
+            # all modules which imported django.db.connections should be changed to get new ConnectionHandler
+            django.db.models.sql.compiler.connections = django.db.models.connections = \
+                django.core.management.commands.loaddata.connections = \
+                django.db.backends.connections = django.db.backends.mysql.base.connections = \
+                django.core.management.commands.migrate.connections = django.db.transaction.connections = \
+                django.db.connections = django.db.models.base.connections = django.db.models.sql.query.connections = \
+                ConnectionHandler(settings.DATABASES)
 
         # default django connection and backend should be also changed
         django.db.connection = django.db.connections[django.db.DEFAULT_DB_ALIAS]
@@ -94,14 +104,16 @@ def reload_settings(settings, databases=None):
         loader.template_source_loaders = None
         from django.template.loaders import app_directories
         imp.reload(app_directories)
-    from django.template.base import get_templatetags_modules
-    get_templatetags_modules.cache_clear()
-    import django.apps
-    import django
+    if django.VERSION < (1, 9):
+        # >= 1.9 doesn't cache the result after refactor
+        from django.template.base import get_templatetags_modules
+        get_templatetags_modules.cache_clear()
     import django.template
     django.template.engines.__dict__.pop('templates', None)
     django.template.engines._templates = None
     django.template.engines._engines = {}
+
+    import django.apps
     if django.apps.apps.ready:
         django.apps.apps.set_installed_apps(settings.INSTALLED_APPS)
     django.setup()
